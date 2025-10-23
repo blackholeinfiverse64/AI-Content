@@ -181,8 +181,8 @@ class RateLimiter:
         # Rate limit configurations
         self.rate_limits = {
             "default": {"limit": 100, "window": 3600},  # 100/hour
-            "upload": {"limit": 10, "window": 3600},    # 10 uploads/hour
-            "generate": {"limit": 5, "window": 3600},   # 5 generations/hour
+            "upload": {"limit": 50, "window": 3600},    # 50 uploads/hour (increased for development)
+            "generate": {"limit": 20, "window": 3600},  # 20 generations/hour (increased for development)
             "login": {"limit": 5, "window": 900},       # 5 login attempts/15min
             "register": {"limit": 3, "window": 3600},   # 3 registrations/hour
             "feedback": {"limit": 50, "window": 3600},  # 50 feedback/hour

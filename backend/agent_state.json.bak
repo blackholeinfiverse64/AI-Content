@@ -74,6 +74,36 @@
       "nop": 0.0,
       "boost_tag": 0.0,
       "add_suggested_tag": 0.0
+    },
+    "auth_0_t0": {
+      "nop": 0.0,
+      "boost_tag": 0.0,
+      "add_suggested_tag": 0.0
+    },
+    "auth_0_t1": {
+      "nop": 0.0,
+      "boost_tag": 0.0,
+      "add_suggested_tag": 0.0
+    },
+    "auth_0_t4": {
+      "nop": 0.0,
+      "boost_tag": 0.0,
+      "add_suggested_tag": 0.0
+    },
+    "auth_4_t5": {
+      "nop": 0.0,
+      "boost_tag": 0.0,
+      "add_suggested_tag": 0.0
+    },
+    "auth_4_t4": {
+      "nop": 0.0,
+      "boost_tag": 0.0,
+      "add_suggested_tag": 0.0
+    },
+    "auth_0_t5": {
+      "nop": 0.0,
+      "boost_tag": 0.0,
+      "add_suggested_tag": 0.0
     }
   },
   "epsilon": 0.2
