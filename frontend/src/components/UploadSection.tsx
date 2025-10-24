@@ -1,6 +1,6 @@
 import { useState, useRef } from 'react'
 import { Upload, FileText, Image as ImageIcon, File, X, Loader2, CheckCircle, AlertCircle } from 'lucide-react'
-import { contentAPI } from '../services/api'
+import { contentAPI, API_BASE_URL } from '../services/api'
 
 interface UploadSectionProps {
   onVideoGenerated: (videoId: string) => void
@@ -81,26 +81,56 @@ export default function UploadSection({ onVideoGenerated, onProcessingStateChang
 
       console.log('Upload response:', uploadResponse)
 
-      // Start video generation
-      onProcessingStateChange('generating')
-      
-      const generationResponse = await contentAPI.generateVideo(uploadResponse.content_id)
-      console.log('Generation response:', generationResponse)
+      // Check if this is a text file that needs video generation
+      const isTextFile = selectedFile.type.includes('text') || 
+                         selectedFile.name.endsWith('.txt')
 
-      // Success
-      onVideoGenerated(uploadResponse.content_id)
+      let finalContentId = uploadResponse.content_id
+
+      if (isTextFile) {
+        // Generate video from text file
+        onProcessingStateChange('generating')
+        
+        try {
+          // Create FormData with the text file again for video generation
+          const videoFormData = new FormData()
+          videoFormData.append('file', selectedFile)
+          videoFormData.append('title', selectedFile.name.replace(/\.[^/.]+$/, ''))
+          
+          const videoResponse = await fetch(`${API_BASE_URL}/generate-video`, {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${localStorage.getItem('authToken') || ''}`
+            },
+            body: videoFormData
+          })
+
+          if (videoResponse.ok) {
+            const videoData = await videoResponse.json()
+            console.log('Video generation response:', videoData)
+            finalContentId = videoData.content_id || videoData.video_id || finalContentId
+          } else {
+            console.warn('Video generation failed, using uploaded file')
+          }
+        } catch (genError) {
+          console.error('Video generation error:', genError)
+          // Continue with uploaded file if video generation fails
+        }
+      }
+
+      // Notify parent component with the final content ID
+      onVideoGenerated(finalContentId)
       onProcessingStateChange('completed')
       
       // Reset form after a delay
       setTimeout(() => {
         handleRemoveFile()
         setIsProcessing(false)
-        onProcessingStateChange('idle')
-      }, 2000)
+      }, 3000)
 
     } catch (err: any) {
-      console.error('Upload/Generation error:', err)
-      const errorMessage = err.response?.data?.detail || err.message || 'Failed to process file'
+      console.error('Upload error:', err)
+      const errorMessage = err.response?.data?.detail || err.message || 'Failed to upload file'
       setError(errorMessage)
       onProcessingStateChange('error')
       setIsProcessing(false)
@@ -236,7 +266,7 @@ export default function UploadSection({ onVideoGenerated, onProcessingStateChang
         ) : (
           <>
             <Upload className="h-5 w-5" />
-            <span>Upload & Generate Video</span>
+            <span>Upload Content</span>
           </>
         )}
       </button>

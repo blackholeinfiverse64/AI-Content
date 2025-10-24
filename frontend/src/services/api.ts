@@ -2,6 +2,9 @@ import axios, { AxiosError } from 'axios'
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:9000'
 
+// Export API_BASE_URL for use in components
+export { API_BASE_URL }
+
 // Create axios instance with default config
 const api = axios.create({
   baseURL: API_BASE_URL,
@@ -103,6 +106,9 @@ export const contentAPI = {
   uploadFile: async (file: File, onProgress?: (progress: number) => void): Promise<UploadResponse> => {
     const formData = new FormData()
     formData.append('file', file)
+    // Backend requires title field
+    formData.append('title', file.name.replace(/\.[^/.]+$/, '')) // filename without extension
+    formData.append('description', `Uploaded file: ${file.name}`)
     
     const response = await api.post<UploadResponse>('/upload', formData, {
       headers: {
@@ -140,7 +146,7 @@ export const contentAPI = {
     return response.data
   },
 
-  streamVideo: async (contentId: string) => {
+  streamVideo: (contentId: string) => {
     return `${API_BASE_URL}/stream/${contentId}`
   },
 }

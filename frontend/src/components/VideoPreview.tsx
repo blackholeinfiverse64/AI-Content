@@ -22,10 +22,14 @@ export default function VideoPreview({ videoId, processingState }: VideoPreviewP
 
     try {
       setLoading(true)
+      
+      // streamVideo returns a URL string directly (not a promise)
       const streamUrl = contentAPI.streamVideo(videoId)
+      console.log('Stream URL:', streamUrl)
       setVideoUrl(streamUrl)
     } catch (err) {
       console.error('Failed to load video:', err)
+      setVideoUrl(null)
     } finally {
       setLoading(false)
     }
@@ -58,9 +62,9 @@ export default function VideoPreview({ videoId, processingState }: VideoPreviewP
           <div className="inline-flex items-center justify-center w-20 h-20 bg-gray-100 dark:bg-gray-700 rounded-full mb-4">
             <Video className="h-10 w-10 text-gray-400" />
           </div>
-          <h3 className="text-xl font-medium mb-2">No video yet</h3>
+          <h3 className="text-xl font-medium mb-2">No content yet</h3>
           <p className="text-gray-500 dark:text-gray-400">
-            Upload a file and generate a video to see it here
+            Upload a file to preview it here
           </p>
         </div>
       )
@@ -141,22 +145,33 @@ export default function VideoPreview({ videoId, processingState }: VideoPreviewP
             <CheckCircle className="h-6 w-6 text-green-600 dark:text-green-400 flex-shrink-0" />
             <div>
               <p className="font-medium text-green-700 dark:text-green-300">
-                Video generated successfully!
+                Content uploaded successfully!
               </p>
               <p className="text-sm text-green-600 dark:text-green-400">
-                Your video is ready to preview and download
+                Your content is ready to preview and download
               </p>
             </div>
           </div>
 
-          {/* Video Player */}
+          {/* Content Player/Viewer */}
           {videoUrl ? (
             <div className="aspect-video bg-black rounded-lg overflow-hidden mb-4">
+              {/* Try video first, fallback to image if video fails */}
               <video
                 src={videoUrl}
                 controls
                 className="w-full h-full"
                 poster="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 800 450'%3E%3Crect fill='%23000' width='800' height='450'/%3E%3C/svg%3E"
+                onError={(e) => {
+                  console.log('Video failed to load, trying as image')
+                  // If video fails, try displaying as image
+                  const videoEl = e.target as HTMLVideoElement
+                  const imgEl = document.createElement('img')
+                  imgEl.src = videoUrl
+                  imgEl.className = 'w-full h-full object-contain'
+                  imgEl.alt = 'Uploaded content'
+                  videoEl.parentElement?.replaceChild(imgEl, videoEl)
+                }}
               >
                 Your browser does not support the video tag.
               </video>
@@ -165,7 +180,7 @@ export default function VideoPreview({ videoId, processingState }: VideoPreviewP
             <div className="aspect-video bg-gray-900 rounded-lg flex items-center justify-center mb-4">
               <div className="text-center text-white">
                 <PlayCircle className="h-16 w-16 mx-auto mb-4 opacity-50" />
-                <p>Video preview not available</p>
+                <p>Content preview not available</p>
               </div>
             </div>
           )}
@@ -177,7 +192,7 @@ export default function VideoPreview({ videoId, processingState }: VideoPreviewP
               className="flex-1 btn btn-primary flex items-center justify-center space-x-2 py-3"
             >
               <Download className="h-5 w-5" />
-              <span>Download Video</span>
+              <span>Download Content</span>
             </button>
             <button
               onClick={loadVideo}
@@ -188,13 +203,13 @@ export default function VideoPreview({ videoId, processingState }: VideoPreviewP
             </button>
           </div>
 
-          {/* Video Info */}
+          {/* Content Info */}
           <div className="mt-4 p-4 bg-gray-50 dark:bg-gray-700 rounded-lg">
-            <h4 className="font-medium mb-2">Video Details</h4>
+            <h4 className="font-medium mb-2">Content Details</h4>
             <div className="text-sm space-y-1 text-gray-600 dark:text-gray-400">
-              <p>Video ID: <code className="text-xs bg-gray-200 dark:bg-gray-600 px-1 rounded">{videoId}</code></p>
+              <p>Content ID: <code className="text-xs bg-gray-200 dark:bg-gray-600 px-1 rounded">{videoId}</code></p>
               <p>Status: <span className="text-green-600 dark:text-green-400 font-medium">Ready</span></p>
-              <p>Format: MP4</p>
+              <p>Stream URL: <code className="text-xs bg-gray-200 dark:bg-gray-600 px-1 rounded break-all">{videoUrl}</code></p>
             </div>
           </div>
         </div>
@@ -206,7 +221,7 @@ export default function VideoPreview({ videoId, processingState }: VideoPreviewP
 
   return (
     <div className="card p-6">
-      <h2 className="text-2xl font-bold mb-6">Video Preview</h2>
+      <h2 className="text-2xl font-bold mb-6">Content Preview</h2>
       {renderContent()}
     </div>
   )

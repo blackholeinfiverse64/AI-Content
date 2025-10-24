@@ -1,7 +1,0 @@
-VIDEO CONTENT
-==================================================
-
-Frame 1 (3s): Quick test script
-
-Frame 2 (3s): \nLine 1: Hello\nLine 2: World
-
