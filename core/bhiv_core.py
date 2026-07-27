@@ -118,12 +118,43 @@ def _blocking_pipeline(file_path, script_text, content_id, uploader):
                 pass
 
 @safe_job("script_upload_pipeline", retry_count=1)
-async def process_script_upload(script_local_path: str, uploader_id: str = None, title: str = None) -> Dict[str, Any]:
+async def process_script_upload(script_local_path: str, uploader_id: str = None, title: str = None,
+                                trace_id: str = None) -> Dict[str, Any]:
     """
-    Orchestrate complete script-to-video pipeline
+    Orchestrate complete script-to-video pipeline.
+    Routes through external BHIV Core when available (canonical path).
     """
     content_id = uuid.uuid4().hex[:12]
     timestamp = time.time()
+    trace_id = trace_id or f"trace_{int(timestamp*1000)}"
+
+    # --- Canonical path: External BHIV Core ---
+    try:
+        from core.integration.adapters import integration_manager
+        if integration_manager.bhiv_core.is_available():
+            result = await integration_manager.bhiv_core.execute(
+                trace_id=trace_id,
+                module="bhiv_core",
+                action="process_script_upload",
+                payload={
+                    "script_local_path": script_local_path,
+                    "uploader_id": uploader_id,
+                    "title": title,
+                    "content_id": content_id,
+                },
+                execution_id=f"exec_{content_id}",
+            )
+            if result and result.get("status") != "error":
+                log_processing_event(content_id, "script_upload_completed", {
+                    "method": "external_bhiv_core",
+                    "trace_id": trace_id,
+                    "result": result,
+                })
+                return result
+    except Exception as ext_error:
+        logger.debug("External BHIV Core unavailable, using local pipeline: %s", ext_error)
+
+    # --- Fallback: Local pipeline ---
     
     try:
         # Step 1: Save script to bucket
@@ -547,13 +578,37 @@ def _extract_script_from_payload(payload: Dict[str, Any]) -> Optional[str]:
 @safe_job("webhook_ingest", retry_count=0)
 async def process_webhook_ingest(payload: Optional[Dict[str, Any]] = None,
                            script_text: Optional[str] = None,
-                           source: Optional[str] = None) -> Dict[str, Any]:
+                           source: Optional[str] = None,
+                           trace_id: str = None) -> Dict[str, Any]:
     """
-    Ingest webhook payload. Accept either:
+    Ingest webhook payload. Routes through external BHIV Core when available.
+    Accept either:
       - payload dict (JSON), OR  
       - script_text string (from uploaded text file)
     Returns dict with status, content_id OR error with raw_id.
     """
+    trace_id = trace_id or f"trace_{int(time.time()*1000)}"
+
+    # --- Canonical path: External BHIV Core ---
+    try:
+        from core.integration.adapters import integration_manager
+        if integration_manager.bhiv_core.is_available():
+            result = await integration_manager.bhiv_core.execute(
+                trace_id=trace_id,
+                module="bhiv_core",
+                action="process_webhook",
+                payload={
+                    "payload": payload,
+                    "script_text": script_text,
+                    "source": source,
+                },
+            )
+            if result and result.get("status") != "error":
+                return result
+    except Exception as ext_error:
+        logger.debug("External BHIV Core unavailable for webhook, using local: %s", ext_error)
+
+    # --- Fallback: Local processing ---
     try:
         if payload is None:
             payload = {}

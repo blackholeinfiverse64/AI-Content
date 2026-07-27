@@ -137,6 +137,15 @@ except ImportError as e:
     print(f"Warning: Platform contract not available: {e}")
     PLATFORM_CONTRACT_AVAILABLE = False
 
+# --- Ecosystem Integration Adapters ---
+try:
+    from core.integration.adapters import integration_manager
+    from core.integration.config import get_integration_config, validate_integration_config
+    INTEGRATION_AVAILABLE = True
+except ImportError as e:
+    print(f"Warning: Ecosystem integration not available: {e}")
+    INTEGRATION_AVAILABLE = False
+
 try:
     from .runtime_observability import observability_router
     RUNTIME_OBSERVABILITY_AVAILABLE = True
@@ -700,6 +709,43 @@ async def monitoring_status():
     except Exception as e:
         return {"status": "error", "error": str(e), "timestamp": time.strftime('%Y-%m-%d %H:%M:%S')}
 
+@app.get("/integration/health")
+async def integration_health():
+    """BHIV Ecosystem integration health check - shows connectivity to all external services"""
+    if not INTEGRATION_AVAILABLE:
+        return {
+            "status": "unavailable",
+            "message": "Integration adapters not loaded",
+            "timestamp": time.strftime('%Y-%m-%d %H:%M:%S')
+        }
+    try:
+        health = await integration_manager.health_check_all()
+        config = get_integration_config()
+        configured_count = sum(1 for v in health.values() if v.get("available"))
+        total = len(health)
+        return {
+            "status": "healthy" if configured_count > 0 else "standalone",
+            "configured_services": configured_count,
+            "total_services": total,
+            "services": health,
+            "config": config,
+            "timestamp": time.strftime('%Y-%m-%d %H:%M:%S')
+        }
+    except Exception as e:
+        return {"status": "error", "error": str(e), "timestamp": time.strftime('%Y-%m-%d %H:%M:%S')}
+
+@app.get("/integration/status")
+async def integration_status():
+    """Get integration adapter status (configured vs not configured)"""
+    if not INTEGRATION_AVAILABLE:
+        return {"status": "unavailable", "adapters": {}}
+    return {
+        "status": "ok",
+        "adapters": integration_manager.get_integration_status(),
+        "config": validate_integration_config(),
+        "timestamp": time.strftime('%Y-%m-%d %H:%M:%S')
+    }
+
 @app.middleware("http")
 async def response_enrichment_middleware(request: Request, call_next):
     """Middleware to ensure every JSON response carries trace_id, schema_version, status.
@@ -830,6 +876,46 @@ async def startup_event():
         "schema_version": "1.0.0" if PLATFORM_CONTRACT_AVAILABLE else None
     }
     logger.info(f"Phase IV platform health: {platform_health}")
+    
+    # --- Ecosystem Integration: Register with TANTRA ---
+    if INTEGRATION_AVAILABLE:
+        try:
+            from core.integration.config import validate_integration_config
+            config = validate_integration_config()
+            logger.info("Ecosystem integration config: %s configured services, %s missing",
+                        config["total_configured"], config["total_missing"])
+            
+            integration_mgr = integration_manager
+            tantra_result = await integration_mgr.tantra.register({
+                "startup_time": time.strftime('%Y-%m-%d %H:%M:%S'),
+                "version": "1.0.0",
+                "phase": "IV",
+                "integration_status": config,
+            })
+            logger.info("TANTRA registration result: %s", tantra_result)
+            
+            bhiv_result = await integration_mgr.bhiv_core.register(
+                platform_id=os.getenv("PLATFORM_ID", "ai_content_platform"),
+                metadata={
+                    "version": "1.0.0",
+                    "phase": "IV",
+                    "capabilities": ["content_upload", "video_generation", "feedback_learning"],
+                }
+            )
+            logger.info("BHIV Core registration result: %s", bhiv_result)
+            
+            await integration_mgr.insightflow.emit(
+                event_type="platform_startup",
+                data={
+                    "environment": os.getenv("ENVIRONMENT", "development"),
+                    "integration_config": config,
+                    "platform_health": platform_health,
+                },
+            )
+        except Exception as e:
+            logger.warning("Ecosystem registration failed (non-critical): %s", e)
+    else:
+        logger.info("Ecosystem integration adapters not available, running standalone")
     
     # Initialize Prometheus metrics
     if PROMETHEUS_AVAILABLE:

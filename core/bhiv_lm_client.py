@@ -79,10 +79,31 @@ async def _call_lm_simple(prompt: str, timeout: int = 30) -> dict:
             raise LMError(f"api_error: {e}")
         raise
 
-async def suggest_storyboard(script_text: str) -> Dict[str, Any]:
+async def suggest_storyboard(script_text: str, trace_id: str = None) -> Dict[str, Any]:
     """
-    Call BHIV LLM API for storyboard suggestion or fallback to local heuristic
+    Call BHIV LLM API for storyboard suggestion or fallback to local heuristic.
+    Routes through Prompt Runner when available (canonical execution path).
     """
+    # --- Canonical path: Prompt Runner ---
+    try:
+        from core.integration.adapters import integration_manager
+        if integration_manager.prompt_runner.is_available():
+            trace_id = trace_id or f"trace_{int(__import__('time').time()*1000)}"
+            result = await integration_manager.prompt_runner.execute(
+                prompt=f"Generate storyboard for: {script_text}",
+                trace_id=trace_id,
+            )
+            if result and isinstance(result, dict):
+                await _log_lm_interaction("suggest_storyboard", "success", {
+                    "script_length": len(script_text),
+                    "method": "prompt_runner",
+                    "trace_id": trace_id,
+                })
+                return result
+    except Exception as pr_error:
+        logger.debug("Prompt Runner unavailable, falling back: %s", pr_error)
+
+    # --- Fallback: Direct LLM API ---
     try:
         if not BHIV_LM_URL:
             return await _fallback_suggest_storyboard(script_text)
@@ -90,7 +111,8 @@ async def suggest_storyboard(script_text: str) -> Dict[str, Any]:
         result = await call_lm_async(f"Generate storyboard for: {script_text}")
         await _log_lm_interaction("suggest_storyboard", "success", {
             "script_length": len(script_text),
-            "response_scenes": len(result.get("scenes", []))
+            "response_scenes": len(result.get("scenes", [])),
+            "method": "direct_llm",
         })
         return result
                 
@@ -104,10 +126,34 @@ async def suggest_storyboard(script_text: str) -> Dict[str, Any]:
         })
         return await _fallback_suggest_storyboard(script_text)
 
-async def improve_storyboard(storyboard_json: Dict[str, Any], feedback: Dict[str, Any]) -> Dict[str, Any]:
+async def improve_storyboard(storyboard_json: Dict[str, Any], feedback: Dict[str, Any],
+                             trace_id: str = None) -> Dict[str, Any]:
     """
-    Send storyboard + user feedback to LLM for improvement or use local heuristic
+    Send storyboard + user feedback to LLM for improvement or use local heuristic.
+    Routes through Prompt Runner when available (canonical execution path).
     """
+    # --- Canonical path: Prompt Runner ---
+    try:
+        from core.integration.adapters import integration_manager
+        if integration_manager.prompt_runner.is_available():
+            trace_id = trace_id or f"trace_{int(__import__('time').time()*1000)}"
+            result = await integration_manager.prompt_runner.execute(
+                prompt=f"Improve storyboard based on feedback: {json.dumps(feedback)}",
+                trace_id=trace_id,
+            )
+            if result and isinstance(result, dict):
+                await _log_lm_interaction("improve_storyboard", "success", {
+                    "original_scenes": len(storyboard_json.get("scenes", [])),
+                    "improved_scenes": len(result.get("scenes", [])),
+                    "feedback_rating": feedback.get("rating", 0),
+                    "method": "prompt_runner",
+                    "trace_id": trace_id,
+                })
+                return result
+    except Exception as pr_error:
+        logger.debug("Prompt Runner unavailable for improvement, falling back: %s", pr_error)
+
+    # --- Fallback: Direct LLM API ---
     try:
         if not BHIV_LM_URL:
             return await _fallback_improve_storyboard(storyboard_json, feedback)
@@ -117,7 +163,8 @@ async def improve_storyboard(storyboard_json: Dict[str, Any], feedback: Dict[str
         await _log_lm_interaction("improve_storyboard", "success", {
             "original_scenes": len(storyboard_json.get("scenes", [])),
             "improved_scenes": len(result.get("scenes", [])),
-            "feedback_rating": feedback.get("rating", 0)
+            "feedback_rating": feedback.get("rating", 0),
+            "method": "direct_llm",
         })
         return result
                 

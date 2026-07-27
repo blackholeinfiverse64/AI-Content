@@ -595,8 +595,39 @@ def capture_exception(error: Exception, extra_data: Dict[str, Any] = None):
     sentry_manager.capture_exception(error, extra_data)
 
 def track_event(user_id: str, event: str, properties: Dict[str, Any] = None):
-    """Convenience function to track events"""
+    """Convenience function to track events. Emits to both PostHog and InsightFlow."""
     posthog_manager.track_event(user_id, event, properties)
+
+    # --- Emit to InsightFlow (canonical telemetry path) ---
+    try:
+        from core.integration.adapters import integration_manager
+        if integration_manager.insightflow.is_available():
+            import asyncio
+            loop = None
+            try:
+                loop = asyncio.get_event_loop()
+            except RuntimeError:
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+
+            if loop.is_running():
+                asyncio.ensure_future(
+                    integration_manager.insightflow.emit(
+                        event_type=event,
+                        data={"user_id": user_id, **(properties or {})},
+                        user_id=user_id,
+                    )
+                )
+            else:
+                loop.run_until_complete(
+                    integration_manager.insightflow.emit(
+                        event_type=event,
+                        data={"user_id": user_id, **(properties or {})},
+                        user_id=user_id,
+                    )
+                )
+    except Exception as e:
+        logger.debug("InsightFlow emit skipped (non-critical): %s", e)
 
 def set_user_context(user_id: str, username: str = None, email: str = None):
     """Set user context for both Sentry and PostHog"""
